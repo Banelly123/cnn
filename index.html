@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clasificador Real - Ingeniería en Sistemas</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f3f0f7;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(138, 43, 226, 0.15);
+            padding: 30px;
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+            border-top: 8px solid #8A2BE2;
+        }
+
+        h1 {
+            color: #4B0082;
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        h2 {
+            color: #8A2BE2;
+            font-size: 14px;
+            margin-top: 0;
+            margin-bottom: 25px;
+            font-weight: 400;
+        }
+
+        .upload-section {
+            border: 2px dashed #D8BFD8;
+            padding: 20px;
+            border-radius: 8px;
+            background-color: #faf8fc;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        .upload-section:hover {
+            border-color: #8A2BE2;
+            background-color: #f7f3fb;
+        }
+
+        #imagePreview {
+            max-width: 100%;
+            max-height: 250px;
+            margin-top: 20px;
+            border-radius: 6px;
+            display: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .btn-predict {
+            background-color: #8A2BE2;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            font-size: 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 20px;
+            width: 100%;
+            transition: 0.3s;
+            font-weight: bold;
+        }
+
+        .btn-predict:hover {
+            background-color: #4B0082;
+        }
+
+        .btn-predict:disabled {
+            background-color: #b8a1d9;
+            cursor: not-allowed;
+        }
+
+        .status-box {
+            font-weight: bold;
+            color: #ff8c00;
+            margin-bottom: 20px;
+            padding: 10px;
+            border-radius: 6px;
+            background-color: #fffaf0;
+            line-height: 1.4;
+        }
+
+        .result-box {
+            margin-top: 25px;
+            padding: 15px;
+            background-color: #E6E6FA;
+            border-radius: 6px;
+            border-left: 5px solid #8A2BE2;
+            display: none;
+            text-align: left;
+        }
+
+        .result-title {
+            font-weight: bold;
+            color: #4B0082;
+            margin-bottom: 5px;
+        }
+
+        #labelResult {
+            font-size: 18px;
+            color: #333;
+        }
+
+        small {
+            color: #666;
+            font-size: 11px;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+    <h1>Clasificación Convolucional en Web</h1>
+    <h2>Modelo Abierto Real - CIFAR-100 Coarse</h2>
+
+    <div id="statusLabel" class="status-box">
+        Cargando modelo y pesos convolucionales...
+    </div>
+
+    <div class="upload-section" onclick="document.getElementById('fileInput').click()">
+        <p style="margin: 0; color: #666;">Haz clic aquí para cargar una imagen de prueba</p>
+        <input
+            type="file"
+            id="fileInput"
+            accept="image/*"
+            style="display: none;"
+            onchange="previewImage(event)"
+        >
+    </div>
+
+    <img id="imagePreview" alt="Vista previa de la imagen para inferencia">
+
+    <button class="btn-predict" id="predictButton" onclick="predictImage()" disabled>
+        Clasificar Imagen Real
+    </button>
+
+    <div class="result-box" id="resultBox">
+        <div class="result-title">Resultado de la Inferencia Real:</div>
+        <div id="labelResult">Esperando procesamiento de tensores...</div>
+    </div>
+</div>
+
+<script>
+    let model = null;
+
+    const CLASES = [
+        "Mamíferos acuáticos (ballenas, delfines, castores)",
+        "Pescados",
+        "Flores",
+        "Contenedores de comida (botellas, tazones, tazas)",
+        "Frutas y vegetales",
+        "Dispositivos del hogar (lámparas, teclados, relojes)",
+        "Muebles del hogar (sillas, mesas, camas)",
+        "Insectos",
+        "Carnívoros grandes (leones, tigres, osos)",
+        "Cosas hechas por el hombre al aire libre (puentes, casas, castillos)",
+        "Omnívoros/Herbívoros grandes (camellos, elefantes, vacas)",
+        "Mamíferos medianos (zorros, ardillas, mapaches)",
+        "Invertebrados no insectos (caracoles, cangrejos, arañas de mar)",
+        "Personas (niños, adultos)",
+        "Reptiles (serpientes, lagartos, tortugas)",
+        "Roedores (ratones, hámsters)",
+        "Arañas",
+        "Árboles (pinos, robles, sauces)",
+        "Vehículos e instalaciones (autobuses, trenes, camiones)",
+        "Vehículos ligeros (bicicletas, motocicletas, autos)"
+    ];
+
+    function construirArquitecturaManual() {
+        const cnn = tf.sequential({ name: 'sequential' });
+
+        cnn.add(tf.layers.conv2d({
+            name: 'conv2d',
+            inputShape: [32, 32, 3],
+            filters: 64,
+            kernelSize: [3, 3],
+            strides: [1, 1],
+            padding: 'same',
+            activation: 'relu',
+            useBias: true
+        }));
+
+        cnn.add(tf.layers.maxPooling2d({
+            name: 'max_pooling2d',
+            poolSize: [2, 2],
+            strides: [2, 2],
+            padding: 'valid'
+        }));
+
+        cnn.add(tf.layers.conv2d({
+            name: 'conv2d_1',
+            filters: 128,
+            kernelSize: [3, 3],
+            strides: [1, 1],
+            padding: 'same',
+            activation: 'relu',
+            useBias: true
+        }));
+
+        cnn.add(tf.layers.maxPooling2d({
+            name: 'max_pooling2d_1',
+            poolSize: [2, 2],
+            strides: [2, 2],
+            padding: 'valid'
+        }));
+
+        cnn.add(tf.layers.flatten({ name: 'flatten' }));
+
+        cnn.add(tf.layers.dropout({
+            name: 'dropout',
+            rate: 0.5
+        }));
+
+        cnn.add(tf.layers.dense({
+            name: 'dense',
+            units: 128,
+            activation: 'relu',
+            useBias: true
+        }));
+
+        cnn.add(tf.layers.dense({
+            name: 'dense_1',
+            units: 20,
+            activation: 'softmax',
+            useBias: true
+        }));
+
+        return cnn;
+    }
+
+    async function loadModel() {
+        const statusLabel = document.getElementById('statusLabel');
+        const predictButton = document.getElementById('predictButton');
+
+        try {
+            statusLabel.innerText = "Cargando arquitectura manual y pesos .bin...";
+            statusLabel.style.color = "#ff8c00";
+            statusLabel.style.backgroundColor = "#fffaf0";
+
+            const basePath = new URL('./', window.location.href).href;
+            const modelJsonUrl = new URL('./model.json', window.location.href).href + '?v=' + Date.now();
+
+            console.log("Leyendo manifest desde:", modelJsonUrl);
+
+            const response = await fetch(modelJsonUrl, { cache: 'no-store' });
+
+            if (!response.ok) {
+                throw new Error("No se pudo encontrar model.json. Código HTTP: " + response.status);
+            }
+
+            const modelJson = await response.json();
+
+            if (!modelJson.weightsManifest) {
+                throw new Error("model.json no contiene weightsManifest.");
+            }
+
+            const version = Date.now();
+            const manifestSinCache = modelJson.weightsManifest.map(group => ({
+                ...group,
+                paths: group.paths.map(path => path + '?v=' + version)
+            }));
+
+            console.log("Cargando pesos desde:", basePath);
+
+            const weightMap = await tf.io.loadWeights(manifestSinCache, basePath);
+
+            const cnn = construirArquitecturaManual();
+
+            const pesosOrdenados = [
+                weightMap['sequential/conv2d/kernel'],
+                weightMap['sequential/conv2d/bias'],
+                weightMap['sequential/conv2d_1/kernel'],
+                weightMap['sequential/conv2d_1/bias'],
+                weightMap['sequential/dense/kernel'],
+                weightMap['sequential/dense/bias'],
+                weightMap['sequential/dense_1/kernel'],
+                weightMap['sequential/dense_1/bias']
+            ];
+
+            if (pesosOrdenados.some(w => !w)) {
+                console.log("Pesos encontrados:", Object.keys(weightMap));
+                throw new Error("No se encontraron todos los pesos esperados dentro de los shards .bin.");
+            }
+
+            cnn.setWeights(pesosOrdenados);
+            model = cnn;
+
+            statusLabel.innerText = "¡Modelo cargado correctamente!";
+            statusLabel.style.color = "#008000";
+            statusLabel.style.backgroundColor = "#f0fff0";
+
+            predictButton.disabled = false;
+
+            console.log("Modelo listo:", model);
+        } catch (error) {
+            console.error("Error real al cargar el modelo:", error);
+
+            statusLabel.innerHTML = `
+                Error al cargar el modelo.<br>
+                Revisa que <strong>model.json</strong> y los archivos <strong>.bin</strong> estén en la misma carpeta.<br>
+                <small>Abre F12 → Console para ver el error exacto.</small>
+            `;
+            statusLabel.style.color = "#cc0000";
+            statusLabel.style.backgroundColor = "#fff0f0";
+
+            predictButton.disabled = true;
+        }
+    }
+
+    function previewImage(event) {
+        const file = event.target.files[0];
+
+        if (!file) {
+            return;
+        }
+
+        const reader = new FileReader();
+
+        reader.onload = function() {
+            const preview = document.getElementById('imagePreview');
+            preview.src = reader.result;
+            preview.style.display = 'block';
+            document.getElementById('resultBox').style.display = 'none';
+        };
+
+        reader.readAsDataURL(file);
+    }
+
+    async function predictImage() {
+        if (!model) {
+            alert("El modelo todavía no se ha cargado correctamente.");
+            return;
+        }
+
+        const imgElement = document.getElementById('imagePreview');
+
+        if (!imgElement.src || imgElement.style.display === 'none') {
+            alert("Por favor, selecciona primero una imagen.");
+            return;
+        }
+
+        const resultBox = document.getElementById('resultBox');
+        const labelResult = document.getElementById('labelResult');
+
+        resultBox.style.display = 'block';
+        labelResult.innerText = "Procesando imagen y calculando predicción...";
+
+        let prediction = null;
+
+        try {
+            prediction = tf.tidy(() => {
+                let tensor = tf.browser.fromPixels(imgElement);
+                tensor = tf.image.resizeNearestNeighbor(tensor, [32, 32]);
+                tensor = tensor.toFloat().div(tf.scalar(255.0));
+                tensor = tensor.expandDims(0);
+                return model.predict(tensor);
+            });
+
+            const rawScores = await prediction.data();
+            const highestIndex = prediction.argMax(1).dataSync()[0];
+            const accuracyPercentage = (rawScores[highestIndex] * 100).toFixed(2);
+
+            labelResult.innerHTML = `
+                <strong>Clasificación Convolucional:</strong> ${CLASES[highestIndex]} <br>
+                <strong>Porcentaje de Confianza:</strong> ${accuracyPercentage}% <br>
+                <small>(Inferencia ejecutada con imagen redimensionada a 32x32 píxeles)</small>
+            `;
+        } catch (error) {
+            console.error("Error al clasificar la imagen:", error);
+
+            labelResult.innerHTML = `
+                <strong>Error al procesar la imagen.</strong><br>
+                Revisa la consola del navegador con F12 para ver más detalles.
+            `;
+        } finally {
+            if (prediction) {
+                prediction.dispose();
+            }
+        }
+    }
+
+    window.addEventListener('load', loadModel);
+</script>
+
+</body>
+</html>
