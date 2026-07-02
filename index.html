@@ -4,7 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Clasificador Real - Ingeniería en Sistemas</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+
+    <!-- Versión fija de TensorFlow.js para evitar errores por cambios de versión -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -16,6 +19,7 @@
             flex-direction: column;
             align-items: center;
         }
+
         .container {
             background-color: #ffffff;
             border-radius: 12px;
@@ -26,11 +30,13 @@
             text-align: center;
             border-top: 8px solid #8A2BE2;
         }
+
         h1 {
             color: #4B0082;
             font-size: 24px;
             margin-bottom: 5px;
         }
+
         h2 {
             color: #8A2BE2;
             font-size: 14px;
@@ -38,6 +44,7 @@
             margin-bottom: 25px;
             font-weight: 400;
         }
+
         .upload-section {
             border: 2px dashed #D8BFD8;
             padding: 20px;
@@ -46,10 +53,12 @@
             cursor: pointer;
             transition: 0.3s;
         }
+
         .upload-section:hover {
             border-color: #8A2BE2;
             background-color: #f7f3fb;
         }
+
         #imagePreview {
             max-width: 100%;
             max-height: 250px;
@@ -58,6 +67,7 @@
             display: none;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
+
         .btn-predict {
             background-color: #8A2BE2;
             color: white;
@@ -71,9 +81,16 @@
             transition: 0.3s;
             font-weight: bold;
         }
+
         .btn-predict:hover {
             background-color: #4B0082;
         }
+
+        .btn-predict:disabled {
+            background-color: #b8a1d9;
+            cursor: not-allowed;
+        }
+
         .status-box {
             font-weight: bold;
             color: #ff8c00;
@@ -81,7 +98,9 @@
             padding: 10px;
             border-radius: 6px;
             background-color: #fffaf0;
+            line-height: 1.4;
         }
+
         .result-box {
             margin-top: 25px;
             padding: 15px;
@@ -91,33 +110,51 @@
             display: none;
             text-align: left;
         }
+
         .result-title {
             font-weight: bold;
             color: #4B0082;
             margin-bottom: 5px;
         }
+
         #labelResult {
             font-size: 18px;
             color: #333;
         }
+
+        small {
+            color: #666;
+            font-size: 11px;
+        }
     </style>
 </head>
+
 <body>
 
 <div class="container">
     <h1>Clasificación Convolucional en Web</h1>
     <h2>Modelo Abierto Real - CIFAR-100 Coarse</h2>
-    
-    <div id="statusLabel" class="status-box">Cargando arquitectura y shards de peso convolucionales...</div>
+
+    <div id="statusLabel" class="status-box">
+        Cargando arquitectura y shards de pesos convolucionales...
+    </div>
 
     <div class="upload-section" onclick="document.getElementById('fileInput').click()">
         <p style="margin: 0; color: #666;">Haz clic aquí para cargar una imagen de prueba</p>
-        <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="previewImage(event)">
+        <input 
+            type="file" 
+            id="fileInput" 
+            accept="image/*" 
+            style="display: none;" 
+            onchange="previewImage(event)"
+        >
     </div>
 
     <img id="imagePreview" alt="Vista previa de la imagen para inferencia">
 
-    <button class="btn-predict" onclick="predictImage()">Clasificar Imagen Real</button>
+    <button class="btn-predict" id="predictButton" onclick="predictImage()" disabled>
+        Clasificar Imagen Real
+    </button>
 
     <div class="result-box" id="resultBox">
         <div class="result-title">Resultado de la Inferencia Real:</div>
@@ -126,116 +163,154 @@
 </div>
 
 <script>
-    let model;
-    
-    // Lista oficial de las 20 superclases coarse de CIFAR-100 ordenadas por id de neurona
+    let model = null;
+
     const CLASES = [
-        "Mamíferos acuáticos (ballenas, delfines, castores)", 
-        "Pescados", 
-        "Flores", 
-        "Contenedores de comida (botellas, tazones, tazas)", 
-        "Frutas y vegetales", 
-        "Dispositivos del hogar (lámparas, teclados, relojes)", 
-        "Muebles del hogar (sillas, mesas, camas)", 
-        "Insectos", 
-        "Carnívoros grandes (leones, tigres, osos)", 
-        "Cosas hechas por el hombre al aire libre (puentes, casas, castillos)", 
-        "Omnívoros/Herbívoros grandes (camellos, elefantes, vacas)", 
-        "Mamíferos medianos (zorros, ardillas, mapaches)", 
-        "Invertebrados no insectos (caracoles, cangrejos, arañas de mar)", 
-        "Personas (niños, adultos)", 
-        "Reptiles (serpientes, lagartos, tortugas)", 
-        "Roedores (ratones, hámsters)", 
-        "Arañas", 
-        "Árboles (pinos, robles, sauces)", 
-        "Vehículos e instalaciones (autobuses, trenes, camiones)", 
+        "Mamíferos acuáticos (ballenas, delfines, castores)",
+        "Pescados",
+        "Flores",
+        "Contenedores de comida (botellas, tazones, tazas)",
+        "Frutas y vegetales",
+        "Dispositivos del hogar (lámparas, teclados, relojes)",
+        "Muebles del hogar (sillas, mesas, camas)",
+        "Insectos",
+        "Carnívoros grandes (leones, tigres, osos)",
+        "Cosas hechas por el hombre al aire libre (puentes, casas, castillos)",
+        "Omnívoros/Herbívoros grandes (camellos, elefantes, vacas)",
+        "Mamíferos medianos (zorros, ardillas, mapaches)",
+        "Invertebrados no insectos (caracoles, cangrejos, arañas de mar)",
+        "Personas (niños, adultos)",
+        "Reptiles (serpientes, lagartos, tortugas)",
+        "Roedores (ratones, hámsters)",
+        "Arañas",
+        "Árboles (pinos, robles, sauces)",
+        "Vehículos e instalaciones (autobuses, trenes, camiones)",
         "Vehículos ligeros (bicicletas, motocicletas, autos)"
     ];
 
-    // Carga de la arquitectura física y los binarios asociados
     async function loadModel() {
         const statusLabel = document.getElementById('statusLabel');
+        const predictButton = document.getElementById('predictButton');
+
         try {
-            // Carga de forma local el model.json de la misma raíz
-            model = await tf.loadLayersModel('model.json');
-            statusLabel.innerText = "¡Modelo Inteligente Cargado de Forma Exitosa!";
+            statusLabel.innerText = "Cargando modelo, por favor espera...";
+            statusLabel.style.color = "#ff8c00";
+            statusLabel.style.backgroundColor = "#fffaf0";
+
+            /*
+                Esta ruta funciona tanto en Vercel como en Live Server,
+                siempre que estos archivos estén en la misma carpeta:
+
+                index.html
+                model.json
+                group1-shard1of2.bin
+                group1-shard2of2.bin
+            */
+            const MODEL_URL = new URL('./model.json', window.location.href).href;
+
+            console.log("Intentando cargar modelo desde:", MODEL_URL);
+
+            model = await tf.loadLayersModel(MODEL_URL);
+
+            statusLabel.innerText = "¡Modelo cargado correctamente!";
             statusLabel.style.color = "#008000";
             statusLabel.style.backgroundColor = "#f0fff0";
+
+            predictButton.disabled = false;
+
+            console.log("Modelo cargado:", model);
         } catch (error) {
-            console.error(error);
-            statusLabel.innerText = "Error: El navegador requiere un servidor local para abrir los shards (usa Live Server en VS Code).";
+            console.error("Error real al cargar el modelo:", error);
+
+            statusLabel.innerHTML = `
+                Error al cargar el modelo.<br>
+                Revisa que <strong>model.json</strong> y los archivos <strong>.bin</strong> estén en la misma carpeta.
+            `;
             statusLabel.style.color = "#cc0000";
             statusLabel.style.backgroundColor = "#fff0f0";
+
+            predictButton.disabled = true;
         }
     }
 
     function previewImage(event) {
+        const file = event.target.files[0];
+
+        if (!file) {
+            return;
+        }
+
         const reader = new FileReader();
+
         reader.onload = function() {
             const preview = document.getElementById('imagePreview');
             preview.src = reader.result;
             preview.style.display = 'block';
+
             document.getElementById('resultBox').style.display = 'none';
-        }
-        if(event.target.files[0]) {
-            reader.readAsDataURL(event.target.files[0]);
-        }
+        };
+
+        reader.readAsDataURL(file);
     }
 
     async function predictImage() {
         if (!model) {
-            alert("Por favor, asegúrate de que el modelo esté cargado en un servidor local seguro.");
+            alert("El modelo todavía no se ha cargado correctamente.");
             return;
         }
 
         const imgElement = document.getElementById('imagePreview');
+
         if (!imgElement.src || imgElement.style.display === 'none') {
-            alert("Por favor, selecciona primero una imagen antes de evaluar.");
+            alert("Por favor, selecciona primero una imagen.");
             return;
         }
 
         const resultBox = document.getElementById('resultBox');
         const labelResult = document.getElementById('labelResult');
-        
+
         resultBox.style.display = 'block';
-        labelResult.innerText = "Extrayendo matriz y calculando Softmax...";
+        labelResult.innerText = "Procesando imagen y calculando predicción...";
 
-        // --- PROCESAMIENTO NUMÉRICO REAL ---
-        const prediction = tf.tidy(() => {
-            // 1. Convertir la imagen HTML cargada a un Tensor de TensorFlow
-            let tensor = tf.browser.fromPixels(imgElement);
-            
-            // 2. Redimensionar exactamente a la matriz de entrada 32x32 vista en clase
-            tensor = tf.image.resizeNearestNeighbor(tensor, [32, 32]);
-            
-            // 3. Normalizar dividiendo entre 255.0 para escalar los floats entre 0 y 1
-            tensor = tensor.toFloat().div(tf.scalar(255.0));
-            
-            // 4. Agregar la dimensión del batch requerida por Keras (1, 32, 32, 3)
-            tensor = tensor.expandDims(0);
-            
-            // 5. Ejecutar la inferencia real de los pesos sobre la matriz
-            return model.predict(tensor);
-        });
+        let prediction = null;
 
-        // Extraer los porcentajes de probabilidad calculados por la última capa
-        const rawScores = await prediction.data();
-        
-        // Encontrar el índice de la neurona con la mayor probabilidad detectada
-        const highestIndex = prediction.argMax(1).dataSync()[0];
-        const accuracyPercentage = (rawScores[highestIndex] * 100).toFixed(2);
+        try {
+            prediction = tf.tidy(() => {
+                let tensor = tf.browser.fromPixels(imgElement);
 
-        // Imprimir el veredicto real de tus neuronas en el cuadro lila
-        labelResult.innerHTML = `<strong>Clasificación Convolucional:</strong> ${CLASES[highestIndex]} <br>
-                                 <strong>Porcentaje de Confianza:</strong> ${accuracyPercentage}% <br>
-                                 <small style="color:#666; font-size:11px;">(Inferencia limpia ejecutada localmente a 32x32 píxeles)</small>`;
-        
-        // Liberar el tensor resultante para evitar fugas de memoria en la GPU/Navegador
-        prediction.dispose();
+                tensor = tf.image.resizeNearestNeighbor(tensor, [32, 32]);
+
+                tensor = tensor.toFloat().div(tf.scalar(255.0));
+
+                tensor = tensor.expandDims(0);
+
+                return model.predict(tensor);
+            });
+
+            const rawScores = await prediction.data();
+            const highestIndex = prediction.argMax(1).dataSync()[0];
+            const accuracyPercentage = (rawScores[highestIndex] * 100).toFixed(2);
+
+            labelResult.innerHTML = `
+                <strong>Clasificación Convolucional:</strong> ${CLASES[highestIndex]} <br>
+                <strong>Porcentaje de Confianza:</strong> ${accuracyPercentage}% <br>
+                <small>(Inferencia ejecutada con imagen redimensionada a 32x32 píxeles)</small>
+            `;
+        } catch (error) {
+            console.error("Error al clasificar la imagen:", error);
+
+            labelResult.innerHTML = `
+                <strong>Error al procesar la imagen.</strong><br>
+                Revisa la consola del navegador con F12 para ver más detalles.
+            `;
+        } finally {
+            if (prediction) {
+                prediction.dispose();
+            }
+        }
     }
 
-    // Iniciar el pipeline de lectura del modelo al arrancar la ventana
-    loadModel();
+    window.addEventListener('load', loadModel);
 </script>
 
 </body>
